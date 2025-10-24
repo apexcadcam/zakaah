@@ -1,0 +1,77 @@
+{
+ "actions": [],
+ "creation": "2025-10-24 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "issingle": 1,
+ "field_order": [
+  "company",
+  "zakaah_accounts",
+  "section_break_import",
+  "import_journal_entries",
+  "section_break_entries",
+  "payment_entries"
+ ],
+ "fields": [
+  {
+   "fieldname": "company",
+   "fieldtype": "Link",
+   "label": "Company",
+   "options": "Company",
+   "reqd": 1
+  },
+  {
+   "fieldname": "zakaah_accounts",
+   "fieldtype": "Table",
+   "label": "Zakaah Accounts",
+   "options": "Zakaah Account Item"
+  },
+  {
+   "fieldname": "section_break_import",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "import_journal_entries",
+   "fieldtype": "Button",
+   "label": "Import"
+  },
+  {
+   "fieldname": "section_break_entries",
+   "fieldtype": "Section Break",
+   "label": "Payment Entries"
+  },
+  {
+   "fieldname": "payment_entries",
+   "fieldtype": "Table",
+   "label": "Payment Entries",
+   "options": "Zakaah Payment Entry"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-10-24 04:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "zakaah_management",
+ "name": "Zakaah Payments",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}
+
