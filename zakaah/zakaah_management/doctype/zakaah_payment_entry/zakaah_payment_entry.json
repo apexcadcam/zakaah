@@ -522,6 +522,37 @@
    "make_attachment_public": 0,
    "placeholder": null,
    "doctype": "DocField"
+  },
+  {
+   "fieldname": "selected",
+   "fieldtype": "Check",
+   "label": "Select",
+   "in_list_view": 1,
+   "default": "0",
+   "doctype": "DocField"
+  },
+  {
+   "fieldname": "reconciled",
+   "fieldtype": "Check",
+   "label": "Reconciled",
+   "in_list_view": 1,
+   "default": "0",
+   "doctype": "DocField"
+  },
+  {
+   "fieldname": "zakaah_calculation_run",
+   "fieldtype": "Link",
+   "label": "Allocated to Run",
+   "options": "Zakaah Calculation Run",
+   "in_list_view": 0,
+   "doctype": "DocField"
+  },
+  {
+   "fieldname": "allocated_amount",
+   "fieldtype": "Currency",
+   "label": "Allocated Amount",
+   "in_list_view": 0,
+   "doctype": "DocField"
   }
  ],
  "links": [],
