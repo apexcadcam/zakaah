@@ -1,17 +1,28 @@
 {
  "actions": [],
- "creation": "2025-10-24 00:00:00.000000",
+ "creation": "2025-10-24 12:30:00.000000",
  "doctype": "DocType",
  "editable_grid": 1,
  "engine": "InnoDB",
- "issingle": 1,
  "field_order": [
   "company",
+  "column_break_1",
+  "total_balance",
+  "section_break_zakaah",
   "zakaah_accounts",
+  "section_break_journal_entries",
+  "filter_from_date",
+  "filter_to_date",
+  "column_break_filter",
+  "filter_journal_entry",
+  "search_remarks",
+  "filter_buttons",
+  "apply_filters",
+  "clear_filters",
+  "export_to_excel",
+  "journal_entries",
   "section_break_import",
-  "import_journal_entries",
-  "section_break_entries",
-  "payment_entries"
+  "import_journal_entries"
  ],
  "fields": [
   {
@@ -22,35 +33,97 @@
    "reqd": 1
   },
   {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "bold": 1,
+   "fieldname": "total_balance",
+   "fieldtype": "Currency",
+   "label": "Total Balance",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_zakaah",
+   "fieldtype": "Section Break",
+   "label": "Zakaah Accounts"
+  },
+  {
    "fieldname": "zakaah_accounts",
    "fieldtype": "Table",
    "label": "Zakaah Accounts",
-   "options": "Zakaah Account Item"
+   "options": "Zakaah Account"
+  },
+  {
+   "fieldname": "section_break_journal_entries",
+   "fieldtype": "Section Break",
+   "label": "Imported Journal Entries"
+  },
+  {
+   "fieldname": "filter_from_date",
+   "fieldtype": "Date",
+   "label": "Filter From Date"
+  },
+  {
+   "fieldname": "filter_to_date",
+   "fieldtype": "Date",
+   "label": "Filter To Date"
+  },
+  {
+   "fieldname": "column_break_filter",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "filter_journal_entry",
+   "fieldtype": "Link",
+   "label": "Filter by Journal Entry",
+   "options": "Journal Entry"
+  },
+  {
+   "fieldname": "search_remarks",
+   "fieldtype": "Data",
+   "label": "Search in Remarks"
+  },
+  {
+   "fieldname": "filter_buttons",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "apply_filters",
+   "fieldtype": "Button",
+   "label": "Apply Filters"
+  },
+  {
+   "fieldname": "clear_filters",
+   "fieldtype": "Button",
+   "label": "Clear Filters"
+  },
+  {
+   "fieldname": "export_to_excel",
+   "fieldtype": "Button",
+   "label": "Export to Excel"
+  },
+  {
+   "fieldname": "journal_entries",
+   "fieldtype": "Table",
+   "label": "Journal Entries",
+   "options": "Zakaah Payment Entry"
   },
   {
    "fieldname": "section_break_import",
-   "fieldtype": "Section Break"
+   "fieldtype": "Section Break",
+   "label": "Import Historical Data"
   },
   {
    "fieldname": "import_journal_entries",
    "fieldtype": "Button",
-   "label": "Import"
-  },
-  {
-   "fieldname": "section_break_entries",
-   "fieldtype": "Section Break",
-   "label": "Payment Entries"
-  },
-  {
-   "fieldname": "payment_entries",
-   "fieldtype": "Table",
-   "label": "Payment Entries",
-   "options": "Zakaah Payment Entry"
+   "label": "Import Journal Entries"
   }
  ],
  "index_web_pages_for_search": 1,
+ "issingle": 1,
  "links": [],
- "modified": "2025-10-24 04:00:00.000000",
+ "modified": "2025-10-25 14:30:00.000000",
  "modified_by": "Administrator",
  "module": "zakaah_management",
  "name": "Zakaah Payments",
@@ -60,10 +133,8 @@
    "create": 1,
    "delete": 1,
    "email": 1,
-   "export": 1,
    "print": 1,
    "read": 1,
-   "report": 1,
    "role": "System Manager",
    "share": 1,
    "write": 1
@@ -74,4 +145,3 @@
  "states": [],
  "track_changes": 1
 }
-

@@ -1,27 +1,37 @@
 {
  "charts": [],
- "content": "[{\"id\":\"e4arFVVQ-J\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b></b></span>\",\"col\":12}},{\"id\":\"c3ee9a3a67\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zakaah Settings\",\"col\":4}},{\"id\":\"e2b7bad27c\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zakaah Calculation Run\",\"col\":4}},{\"id\":\"6a2b7c533d\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zakaah Payment\",\"col\":4}}]",
+ "content": "[{\"id\":\"e4arFVVQ-J\",\"type\":\"header\",\"data\":{\"text\":\"<span class=\\\"h4\\\"><b></b></span>\",\"col\":12}},{\"id\":\"c3ee9a3a67\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zakaah Settings\",\"col\":4}},{\"id\":\"e2b7bad27c\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zakaah Calculation Run\",\"col\":4}},{\"id\":\"vdSHMaejOD\",\"type\":\"shortcut\",\"data\":{\"shortcut_name\":\"Zakaah Payments\",\"col\":3}}]",
  "creation": "2025-10-24 11:51:03",
  "custom_blocks": [],
  "docstatus": 0,
  "doctype": "Workspace",
+ "for_user": "",
  "hide_custom": 0,
  "icon": "accounting",
  "idx": 0,
+ "indicator_color": "",
  "is_hidden": 0,
  "label": "Zakaah Management",
  "links": [],
- "modified": "2025-10-24 12:24:53.851805",
+ "modified": "2025-10-25 14:31:16.025557",
  "modified_by": "Administrator",
  "module": "Zakaah Management",
  "name": "Zakaah Management",
  "number_cards": [],
  "owner": "Administrator",
+ "parent_page": "Accounting",
  "public": 1,
  "quick_lists": [],
  "roles": [],
  "sequence_id": 99.0,
  "shortcuts": [
+  {
+   "color": "Grey",
+   "doc_view": "List",
+   "label": "Zakaah Payments",
+   "link_to": "Zakaah Payments",
+   "type": "DocType"
+  },
   {
    "color": "#3498db",
    "doc_view": "List",
@@ -36,14 +46,6 @@
    "format": "{}",
    "label": "Zakaah Calculation Run",
    "link_to": "Zakaah Calculation Run",
-   "type": "DocType"
-  },
-  {
-   "color": "#3498db",
-   "doc_view": "List",
-   "format": "{}",
-   "label": "Zakaah Payment",
-   "link_to": "Zakaah Payment",
    "type": "DocType"
   }
  ],
