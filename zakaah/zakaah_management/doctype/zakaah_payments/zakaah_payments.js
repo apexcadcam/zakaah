@@ -12,6 +12,11 @@ frappe.ui.form.on("Zakaah Payments", {
 		frm.set_df_property("journal_entries", "cannot_delete_rows", true);
 		frm.set_df_property("journal_entries", "cannot_add_rows", true);
 
+		// Add "View Allocation History" button
+		frm.add_custom_button(__("View Allocation History"), () => {
+			frappe.set_route("List", "Zakaah Payment Allocation Record");
+		});
+
 		// Add "Get Unreconciled Entries" button
 		if (frm.doc.company) {
 			frm.add_custom_button(__("Get Unreconciled Entries"), () =>
