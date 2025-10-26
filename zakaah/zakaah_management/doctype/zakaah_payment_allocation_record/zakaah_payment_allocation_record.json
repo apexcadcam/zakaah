@@ -9,6 +9,7 @@
   "zakaah_calculation_run",
   "column_break_1",
   "allocated_amount",
+  "unallocated_amount",
   "allocation_date"
  ],
  "fields": [
@@ -33,13 +34,22 @@
   {
    "fieldname": "allocated_amount",
    "fieldtype": "Currency",
-   "label": "Allocated Amount"
+   "label": "Allocated Amount",
+   "read_only": 1
+  },
+  {
+   "fieldname": "unallocated_amount",
+   "fieldtype": "Currency",
+   "label": "Unallocated Amount",
+   "read_only": 1,
+   "description": "Remaining amount from Journal Entry after this allocation"
   },
   {
    "fieldname": "allocation_date",
    "fieldtype": "Date",
    "label": "Allocation Date",
-   "default": "Today"
+   "default": "Today",
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,

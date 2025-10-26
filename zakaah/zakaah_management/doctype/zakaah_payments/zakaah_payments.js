@@ -108,6 +108,8 @@ frappe.ui.form.on("Zakaah Payments", {
 							row.remarks = record.remarks;
 							row.selected = 0;
 							row.reconciled = record.reconciled || 0;
+							row.allocated_amount = record.allocated_amount || 0;
+							row.unallocated_amount = record.unallocated_amount || record.debit || 0;
 						});
 					}
 
@@ -141,6 +143,7 @@ frappe.ui.form.on("Zakaah Payments", {
 						row.total_zakaah = run.total_zakaah;
 						row.paid_zakaah = run.paid_zakaah || 0;
 						row.outstanding_zakaah = run.outstanding_zakaah || run.total_zakaah;
+						row.status = run.status;
 						row.selected = 0;
 					});
 
@@ -154,33 +157,73 @@ frappe.ui.form.on("Zakaah Payments", {
 	},
 
 	allocate_payments(frm) {
-		// Get selected runs (if none selected, use all)
+		// Get selected runs (if none selected, use all with outstanding balance)
 		let selected_runs = frm.fields_dict.reconciliation_table.grid.get_selected_children();
 		if (!selected_runs.length) {
-			selected_runs = frm.doc.reconciliation_table;
+			// Auto-select only runs with outstanding balance
+			selected_runs = frm.doc.reconciliation_table.filter(run =>
+				(run.outstanding_zakaah || 0) > 0
+			);
 		}
 
-		// Get selected journal entries (if none selected, use all)
+		// Get selected journal entries (if none selected, use all unreconciled)
 		let selected_entries = frm.fields_dict.journal_entries.grid.get_selected_children();
 		if (!selected_entries.length) {
-			selected_entries = frm.doc.journal_entries;
+			// Auto-select only unreconciled entries
+			selected_entries = frm.doc.journal_entries.filter(entry =>
+				!entry.reconciled
+			);
 		}
 
 		if (selected_runs.length === 0) {
-			frappe.msgprint(__('No Zakaah Calculation Runs available'));
+			frappe.msgprint(__('No Zakaah Calculation Runs with outstanding balance available'));
 			return;
 		}
 
 		if (selected_entries.length === 0) {
-			frappe.msgprint(__('No Journal Entries available'));
+			frappe.msgprint(__('No unreconciled Journal Entries available'));
 			return;
 		}
 
+		// Calculate totals for confirmation
+		let total_journal_amount = selected_entries.reduce((sum, entry) => sum + (entry.debit || 0), 0);
+		let total_outstanding = selected_runs.reduce((sum, run) => sum + (run.outstanding_zakaah || 0), 0);
+
+		// Build detailed confirmation message
+		let message = `<div style="margin-bottom: 15px;">
+			<strong>Allocation Summary:</strong><br>
+			• Journal Entries: ${selected_entries.length} (Total: ${format_currency(total_journal_amount)})<br>
+			• ZCR Records: ${selected_runs.length} (Total Outstanding: ${format_currency(total_outstanding)})<br>
+		</div>`;
+
+		if (total_journal_amount > total_outstanding) {
+			message += `<div style="background-color: #fff3cd; padding: 10px; border-radius: 4px; margin-bottom: 10px;">
+				<strong>⚠️ Note:</strong> Journal entry amount (${format_currency(total_journal_amount)}) exceeds
+				total outstanding (${format_currency(total_outstanding)}). Excess amount of
+				${format_currency(total_journal_amount - total_outstanding)} will remain unallocated
+				for the next fiscal year.
+			</div>`;
+		}
+
+		message += `<div style="margin-top: 15px;">
+			<strong>Allocation Rules:</strong><br>
+			• Amounts will be allocated sequentially (oldest ZCR first)<br>
+			• No ZCR will be allocated more than its Total Zakaah amount<br>
+			• Fully paid ZCRs will be marked as "Paid"<br>
+			• Excess amounts will carry forward to next fiscal year<br>
+		</div>
+		<br>
+		<strong>Do you want to proceed with the allocation?</strong>`;
+
 		// Confirm allocation
 		frappe.confirm(
-			__('This will permanently link {0} journal entries to {1} calculation run(s). Continue?',
-				[selected_entries.length, selected_runs.length]),
+			message,
 			function() {
+				frappe.show_alert({
+					message: __('Processing allocation...'),
+					indicator: 'blue'
+				});
+
 				frappe.call({
 					method: 'zakaah.zakaah_management.doctype.zakaah_payments.zakaah_payments.allocate_payments',
 					args: {
@@ -189,14 +232,11 @@ frappe.ui.form.on("Zakaah Payments", {
 					},
 					callback: function(r) {
 						if (r.message && r.message.success) {
-							frappe.show_alert({
-								message: __('Successfully allocated {0} payments to {1} runs',
-									[r.message.allocated_count, r.message.runs_updated]),
-								indicator: 'green'
-							}, 5);
-
-							// Reload the data
-							frm.trigger('get_unreconciled_payments');
+							// The success message is already shown by the Python method
+							// Just reload the data
+							setTimeout(() => {
+								frm.trigger('get_unreconciled_payments');
+							}, 2000);
 						}
 					}
 				});

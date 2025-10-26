@@ -11,7 +11,8 @@
   "column_break_1",
   "total_zakaah",
   "paid_zakaah",
-  "outstanding_zakaah"
+  "outstanding_zakaah",
+  "status"
  ],
  "fields": [
   {
@@ -64,6 +65,15 @@
    "fieldtype": "Currency",
    "in_list_view": 1,
    "label": "Outstanding Zakaah",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "zakaah_calculation_run.status",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Draft\nCalculated\nPartially Paid\nPaid\nCancelled",
    "read_only": 1
   }
  ],
