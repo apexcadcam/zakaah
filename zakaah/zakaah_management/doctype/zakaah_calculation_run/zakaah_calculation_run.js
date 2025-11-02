@@ -102,10 +102,7 @@ frappe.ui.form.on('Zakaah Calculation Run', {
                             row.journal_entry = entry.journal_entry;
                             row.posting_date = entry.posting_date;
                             row.account = entry.account;
-                            row.debit = entry.debit;
-                            row.credit = entry.credit;
-                            row.amount = entry.amount || entry.debit;
-                            row.remarks = entry.remarks || '';
+                            row.total_debit = entry.debit || 0;  // Map 'debit' to 'total_debit'
                         });
                         frm.refresh_field('journal_entries');
                         frappe.show_alert({

@@ -54,7 +54,8 @@ class ZakaahCalculationRun(Document):
                 self.payment_accounts = []
                 for acc in config_doc.payment_accounts:
                     self.append("payment_accounts", {
-                        "account": acc.account
+                        "account": acc.account,
+                        "debit": acc.debit if hasattr(acc, 'debit') else 0
                     })
         except Exception as e:
             frappe.log_error(f"Error loading payment accounts: {str(e)}", "Load Payment Accounts Error")
@@ -178,16 +179,16 @@ class ZakaahCalculationRun(Document):
             'reserves': 0
         }
         
-        frappe.log_error(f"Dates: {self.to_date}, Company: {company}", "Zakaah Calc")
-        
+        # frappe.log_error(f"Dates: {self.to_date}, Company: {company}", "Zakaah Calc")  # Debug logging removed
+
         # Cash accounts
         for idx, row in enumerate(config.get('cash_accounts', [])):
             # Now row should be a dict, access with .get()
             account_name = row.get('account') if isinstance(row, dict) else None
-            frappe.log_error(f"Cash row {idx}: account={account_name}", "Zakaah Config")
+            # frappe.log_error(f"Cash row {idx}: account={account_name}", "Zakaah Config")  # Debug logging removed
             if account_name:
                 balance = get_account_balance(account_name, self.to_date, company)
-                frappe.log_error(f"Cash: {account_name} = {balance:.0f}", "Zakaah Calc")
+                # frappe.log_error(f"Cash: {account_name} = {balance:.0f}", "Zakaah Calc")  # Debug logging removed
                 assets['cash'] += balance
                 
                 # Add to items table
@@ -200,15 +201,15 @@ class ZakaahCalculationRun(Document):
                         "exchange_rate": 1,
                         "sub_total": balance
                     })
-            else:
-                frappe.log_error(f"Err: No account in row {idx}", "Zakaah Calc")
-        
+            # else:
+                # frappe.log_error(f"Err: No account in row {idx}", "Zakaah Calc")  # Debug logging removed
+
         # Inventory accounts
         for idx, row in enumerate(config.get('inventory_accounts', [])):
             account_name = row.get('account') if isinstance(row, dict) else None
             if account_name:
                 balance = get_account_balance(account_name, self.to_date, company)
-                frappe.log_error(f"Inv: {account_name} = {balance:.0f}", "Zakaah Calc")
+                # frappe.log_error(f"Inv: {account_name} = {balance:.0f}", "Zakaah Calc")  # Debug logging removed
                 assets['inventory'] += balance
                 
                 if balance > 0:
@@ -226,7 +227,7 @@ class ZakaahCalculationRun(Document):
             account_name = row.get('account') if isinstance(row, dict) else None
             if account_name:
                 balance = get_account_balance(account_name, self.to_date, company)
-                frappe.log_error(f"Recv: {account_name} = {balance:.0f}", "Zakaah Calc")
+                # frappe.log_error(f"Recv: {account_name} = {balance:.0f}", "Zakaah Calc")  # Debug logging removed
                 assets['receivables'] += balance
                 
                 if balance > 0:
@@ -244,7 +245,7 @@ class ZakaahCalculationRun(Document):
             account_name = row.get('account') if isinstance(row, dict) else None
             if account_name:
                 balance = get_account_balance(account_name, self.to_date, company)
-                frappe.log_error(f"Pay: {account_name} = {balance:.0f}", "Zakaah Calc")
+                # frappe.log_error(f"Pay: {account_name} = {balance:.0f}", "Zakaah Calc")  # Debug logging removed
                 # Liabilities, add to deduct from assets
                 assets['liabilities'] += balance
                 
@@ -263,7 +264,7 @@ class ZakaahCalculationRun(Document):
             account_name = row.get('account') if isinstance(row, dict) else None
             if account_name:
                 balance = get_account_balance(account_name, self.to_date, company)
-                frappe.log_error(f"Resv: {account_name} = {balance:.0f}", "Zakaah Calc")
+                # frappe.log_error(f"Resv: {account_name} = {balance:.0f}", "Zakaah Calc")  # Debug logging removed
                 assets['reserves'] += balance
                 
                 if balance > 0:
@@ -278,16 +279,16 @@ class ZakaahCalculationRun(Document):
         
         # Calculate total
         assets['total_in_egp'] = (
-            assets['cash'] + 
-            assets['inventory'] + 
-            assets['receivables'] - 
-            assets['liabilities'] + 
+            assets['cash'] +
+            assets['inventory'] +
+            assets['receivables'] -
+            assets['liabilities'] +
             assets['reserves']
         )
-        
-        # Log summary
-        frappe.log_error(f"Total: c={assets['cash']:.0f} i={assets['inventory']:.0f} tot={assets['total_in_egp']:.0f}", "Zakaah Calc")
-        
+
+        # Log summary (Debug logging removed)
+        # frappe.log_error(f"Total: c={assets['cash']:.0f} i={assets['inventory']:.0f} tot={assets['total_in_egp']:.0f}", "Zakaah Calc")
+
         return assets
     
     def get_gold_price_info(self):
@@ -434,12 +435,12 @@ def get_zakaah_assets_config(company, fiscal_year=None):
             else:
                 reserve_accounts.append(row.as_dict())
         
-        # Log actual account names
-        cash_names = [row.get('account') for row in cash_accounts if row.get('account')]
-        inventory_names = [row.get('account') for row in inventory_accounts if row.get('account')]
-        frappe.log_error(f"Cash accounts configured: {cash_names}", "Zakaah Config")
-        frappe.log_error(f"Inventory accounts configured: {inventory_names}", "Zakaah Config")
-        
+        # Log actual account names (Debug logging removed)
+        # cash_names = [row.get('account') for row in cash_accounts if row.get('account')]
+        # inventory_names = [row.get('account') for row in inventory_accounts if row.get('account')]
+        # frappe.log_error(f"Cash accounts configured: {cash_names}", "Zakaah Config")
+        # frappe.log_error(f"Inventory accounts configured: {inventory_names}", "Zakaah Config")
+
         # Check if any accounts are configured
         total_accounts = (len(cash_accounts) + len(inventory_accounts) + 
                          len(receivable_accounts) + len(payable_accounts) + 
@@ -485,17 +486,20 @@ def get_journal_entries_for_calculation_run(calculation_run_name):
         
         # Query Journal Entries that have these accounts
         journal_entries = frappe.db.sql("""
-            SELECT 
+            SELECT
                 jea.parent as journal_entry,
                 je.posting_date,
-                SUM(CASE WHEN jea.account IN %(accounts)s THEN jea.debit ELSE 0 END) as total_debit,
-                jea.account
+                jea.account,
+                SUM(jea.debit) as debit,
+                SUM(jea.credit) as credit,
+                je.user_remark as remarks
             FROM `tabJournal Entry Account` jea
             INNER JOIN `tabJournal Entry` je ON jea.parent = je.name
             WHERE je.docstatus = 1
                 AND jea.account IN %(accounts)s
                 AND je.posting_date BETWEEN %(from_date)s AND %(to_date)s
-            GROUP BY jea.parent, je.posting_date, jea.account
+            GROUP BY jea.parent, je.posting_date, jea.account, je.user_remark
+            ORDER BY je.posting_date DESC
         """, {
             'accounts': payment_accounts,
             'from_date': calc_run.from_date,
@@ -507,45 +511,6 @@ def get_journal_entries_for_calculation_run(calculation_run_name):
     except Exception as e:
         frappe.log_error(f"Error getting journal entries: {str(e)}", "Journal Entries Error")
         return []
-
-@frappe.whitelist()
-def debug_all_config_accounts(company, fiscal_year, to_date):
-    """Debug function to check all configured account balances"""
-    try:
-        config = get_zakaah_assets_config(company, fiscal_year)
-        
-        results = {
-            'cash_accounts': [],
-            'inventory_accounts': [],
-            'total_cash': 0,
-            'total_inventory': 0
-        }
-        
-        # Cash accounts
-        for row in config.get('cash_accounts', []):
-            account_name = row.get('account') if isinstance(row, dict) else (getattr(row, 'account', None) if hasattr(row, 'account') else None)
-            if account_name:
-                balance = get_account_balance(account_name, to_date, company)
-                results['cash_accounts'].append({
-                    'account': account_name,
-                    'balance': balance
-                })
-                results['total_cash'] += balance
-        
-        # Inventory accounts
-        for row in config.get('inventory_accounts', []):
-            account_name = row.get('account') if isinstance(row, dict) else (getattr(row, 'account', None) if hasattr(row, 'account') else None)
-            if account_name:
-                balance = get_account_balance(account_name, to_date, company)
-                results['inventory_accounts'].append({
-                    'account': account_name,
-                    'balance': balance
-                })
-                results['total_inventory'] += balance
-        
-        return results
-    except Exception as e:
-        return {"error": str(e)}
 
 @frappe.whitelist()
 def debug_all_config_accounts(company, fiscal_year, to_date):
@@ -596,83 +561,32 @@ def debug_all_config_accounts(company, fiscal_year, to_date):
         return {"error": str(e)}
 
 def get_account_balance(account, date, company=None):
-    """Get account balance as of date by querying GL Entries directly.
-    
-    If the account is a parent account (has children), it will sum up all child account balances.
-    This matches Trial Balance behavior where parent account shows sum of all children.
+    """Get account balance as of date using ERPNext's get_balance_on.
+
+    This function works for both group accounts and single accounts.
+    ERPNext's get_balance_on automatically handles group accounts correctly.
     """
     try:
         from frappe.utils import flt
-        
-        # Get account document
-        account_doc = frappe.get_cached_doc("Account", account)
-        is_group = account_doc.is_group
-        
-        # If this is a group account, get all its leaf accounts
-        if is_group:
-            # Get all child accounts (including nested children)
-            all_descendants = []
-            def get_children(parent_account):
-                children = frappe.get_all("Account", 
-                    filters={"parent_account": parent_account},
-                    fields=["name", "is_group"]
-                )
-                for child in children:
-                    if child.is_group:
-                        all_descendants.append(child.name)
-                        get_children(child.name)  # Recursive for nested groups
-                    else:
-                        all_descendants.append(child.name)
-            
-            get_children(account)
-            
-            if all_descendants:
-                # Sum balances of all child accounts
-                total_balance = 0
-                for child_account in all_descendants:
-                    child_balance = _get_single_account_balance(child_account, date, company)
-                    total_balance += child_balance
-                
-                frappe.log_error(f"{account} (GROUP): Bal={total_balance:.0f} (sum of {len(all_descendants)} children)", "Account Balance")
-                return total_balance
-            else:
-                frappe.log_error(f"{account} is group but has no leaf children", "Account Balance")
-                return 0
-        else:
-            # Single account - get its balance
-            return _get_single_account_balance(account, date, company)
-        
-    except Exception as e:
-        frappe.log_error(f"Error getting balance for {account}: {str(e)[:100]}", "Account Balance")
-        return 0
-
-
-def _get_single_account_balance(account, date, company=None):
-    """Get balance for a single (leaf) account using ERPNext's get_balance_on (Trial Balance logic)"""
-    try:
-        from frappe.utils import flt
         from erpnext.accounts.utils import get_balance_on
-        
+
         # Use ERPNext's built-in function (same as Trial Balance)
-        # This respects fiscal year, company, and all ERPNext rules
+        # This automatically handles group accounts by summing all children
+        # It respects fiscal year, company, and all ERPNext rules
         balance = get_balance_on(
             account=account,
             date=date,
             company=company
         )
-        
+
         # For Zakaah calculation, we need positive values representing the asset amount
         # Return absolute value for summation
         balance_value = abs(balance or 0)
-        
-        # Log for debugging
-        if balance_value > 0:
-            frappe.log_error(f"{account}: Balance={balance_value:.0f} (company={company})", "Account Balance")
-        
+
         return flt(balance_value)
-        
+
     except Exception as e:
-        frappe.log_error(f"Error getting balance for {account}: {str(e)[:50]}", "Account Balance")
+        frappe.log_error(f"Error getting balance for {account}: {str(e)[:100]}", "Account Balance")
         return 0
 
 

@@ -7,8 +7,55 @@ from frappe.utils import now
 
 class ZakaahPayments(Document):
 	def validate(self):
+		# Debug: Log what we have before cleanup
+		frappe.log_error(
+			f"Before cleanup:\n"
+			f"Calculation runs: {len(self.calculation_runs) if self.calculation_runs else 0}\n"
+			f"Payment entries: {len(self.payment_entries) if self.payment_entries else 0}\n"
+			f"Allocation history: {len(self.allocation_history) if self.allocation_history else 0}",
+			"Zakaah Payments Validate Debug"
+		)
+
+		# Remove placeholder rows before validation
+		self.remove_placeholder_rows()
+
+		# Debug: Log what we have after cleanup
+		frappe.log_error(
+			f"After cleanup:\n"
+			f"Calculation runs: {len(self.calculation_runs) if self.calculation_runs else 0}\n"
+			f"Payment entries: {len(self.payment_entries) if self.payment_entries else 0}\n"
+			f"Allocation history: {len(self.allocation_history) if self.allocation_history else 0}",
+			"Zakaah Payments Validate Debug"
+		)
+
 		# Auto-calculate reconciliation status
 		self.update_reconciliation_status()
+
+	def remove_placeholder_rows(self):
+		"""Remove placeholder rows that have empty journal_entry or zakaah_calculation_run"""
+		# Remove empty payment entries (placeholder rows)
+		if self.payment_entries:
+			valid_entries = []
+			for row in self.payment_entries:
+				if row.journal_entry and str(row.journal_entry).strip():
+					valid_entries.append(row)
+			self.payment_entries = valid_entries
+
+		# Remove empty calculation runs (placeholder rows)
+		if self.calculation_runs:
+			valid_runs = []
+			for row in self.calculation_runs:
+				if row.zakaah_calculation_run and str(row.zakaah_calculation_run).strip():
+					valid_runs.append(row)
+			self.calculation_runs = valid_runs
+
+		# Remove empty allocation history (placeholder rows)
+		if self.allocation_history:
+			valid_history = []
+			for row in self.allocation_history:
+				if row.journal_entry and str(row.journal_entry).strip():
+					valid_history.append(row)
+			self.allocation_history = valid_history
 	
 	def update_reconciliation_status(self):
 		"""Update reconciliation status based on allocation"""
@@ -53,7 +100,8 @@ def get_calculation_runs(company=None, show_unreconciled_only=True):
 		if company:
 			filters["company"] = company
 		if show_unreconciled_only:
-			filters["outstanding_zakaah"] = [">", 0]
+			# Use >= 1 to exclude rounding errors (e.g., 0.001750)
+			filters["outstanding_zakaah"] = [">=", 1]
 		
 		# Get calculation runs
 		runs = frappe.db.get_all(
@@ -74,7 +122,7 @@ def get_calculation_runs(company=None, show_unreconciled_only=True):
 		for run in runs:
 			paid_amount = get_total_allocated_for_run(run.name)
 			outstanding = (run.total_zakaah or 0) - paid_amount
-			
+
 			# Update if different
 			if outstanding != (run.outstanding_zakaah or 0):
 				frappe.db.set_value(
@@ -86,10 +134,15 @@ def get_calculation_runs(company=None, show_unreconciled_only=True):
 					},
 					update_modified=False
 				)
-				
+
 				run.paid_zakaah = paid_amount
 				run.outstanding_zakaah = outstanding
-		
+
+		# Filter out runs with 0 outstanding after recalculation (if show_unreconciled_only)
+		# Use >= 1 to exclude rounding errors (e.g., 0.001750)
+		if show_unreconciled_only:
+			runs = [run for run in runs if (run.outstanding_zakaah or 0) >= 1]
+
 		return runs
 		
 	except Exception as e:
@@ -104,6 +157,11 @@ def import_journal_entries(company, from_date, to_date, selected_accounts):
 	Exactly like Payment Reconciliation module
 	"""
 	try:
+		# Parse selected_accounts if it's a JSON string
+		if isinstance(selected_accounts, str):
+			import json
+			selected_accounts = json.loads(selected_accounts)
+
 		if not selected_accounts or len(selected_accounts) == 0:
 			return {
 				"journal_entry_records": [],
@@ -113,8 +171,22 @@ def import_journal_entries(company, from_date, to_date, selected_accounts):
 		# 1. Get ALL journal entries from selected accounts
 		# IMPORTANT: Get debit from GL Entry (not Journal Entry Account)
 		# This aligns with Payment Accounts rule (Debit from GL Entry)
-		all_entries = frappe.db.sql("""
-			SELECT 
+
+		# Debug: Log parameters before query
+		frappe.log_error(
+			f"SQL Query Parameters:\n"
+			f"Company: {company}\n"
+			f"From Date: {from_date}\n"
+			f"To Date: {to_date}\n"
+			f"Selected Accounts (raw): {selected_accounts}\n"
+			f"Accounts type: {type(selected_accounts)}\n"
+			f"Accounts tuple: {tuple(selected_accounts) if isinstance(selected_accounts, list) else (selected_accounts,)}",
+			"Import Journal Entries SQL Debug"
+		)
+
+		# Query 1: Get journal entries within date range
+		entries_in_range = frappe.db.sql("""
+			SELECT
 				je.name as journal_entry,
 				je.posting_date,
 				je.user_remark as remarks,
@@ -135,6 +207,49 @@ def import_journal_entries(company, from_date, to_date, selected_accounts):
 			'to_date': to_date,
 			'accounts': tuple(selected_accounts) if isinstance(selected_accounts, list) else (selected_accounts,)
 		}, as_dict=True)
+
+		# Query 2: Get ALL journal entries with CURRENT unallocated amounts (regardless of date)
+		# This ensures we show journal entries that still have unallocated amounts from previous periods
+		# FIXED: Calculate current unallocated by comparing total debit vs sum of allocations
+		entries_with_unallocated = frappe.db.sql("""
+			SELECT
+				je.name as journal_entry,
+				je.posting_date,
+				je.user_remark as remarks,
+				SUM(gle.debit) as debit,
+				SUM(gle.credit) as credit,
+				COALESCE(alloc.total_allocated, 0) as already_allocated,
+				SUM(gle.debit) - COALESCE(alloc.total_allocated, 0) as current_unallocated
+			FROM `tabJournal Entry` je
+			INNER JOIN `tabGL Entry` gle ON gle.voucher_no = je.name
+			LEFT JOIN (
+				SELECT journal_entry, SUM(allocated_amount) as total_allocated
+				FROM `tabZakaah Allocation History`
+				WHERE docstatus = 1
+				GROUP BY journal_entry
+			) alloc ON alloc.journal_entry = je.name
+			WHERE je.company = %(company)s
+			AND gle.account IN %(accounts)s
+			AND je.docstatus = 1
+			AND gle.is_cancelled = 0
+			GROUP BY je.name, je.posting_date, je.user_remark
+			HAVING current_unallocated > 0
+			ORDER BY je.posting_date, je.name
+		""", {
+			'company': company,
+			'accounts': tuple(selected_accounts) if isinstance(selected_accounts, list) else (selected_accounts,)
+		}, as_dict=True)
+
+		# Combine both result sets and remove duplicates
+		all_entries_dict = {}
+		for entry in entries_in_range:
+			all_entries_dict[entry.journal_entry] = entry
+		for entry in entries_with_unallocated:
+			if entry.journal_entry not in all_entries_dict:
+				all_entries_dict[entry.journal_entry] = entry
+
+		# Convert back to list and sort by posting date
+		all_entries = sorted(all_entries_dict.values(), key=lambda x: (x.posting_date, x.journal_entry))
 		
 		# 2. Get already allocated amounts from Allocation History
 		already_allocated = frappe.db.sql("""
@@ -181,6 +296,22 @@ def import_journal_entries(company, from_date, to_date, selected_accounts):
 			else:
 				skipped_count += 1
 		
+		# Debug: Log what we're returning
+		debug_msg = f"Journal Entries Found: {len(journal_entry_records)}\n"
+		debug_msg += f"All Entries: {len(all_entries)}\n"
+		debug_msg += f"Skipped: {skipped_count}\n"
+		debug_msg += f"Accounts: {selected_accounts}\n"
+		debug_msg += f"Date Range: {from_date} to {to_date}\n\n"
+
+		if len(all_entries) > 0:
+			debug_msg += "Sample entries from SQL query:\n"
+			for entry in all_entries[:3]:
+				total_allocated = allocated_dict.get(entry.journal_entry, 0)
+				unallocated = (entry.debit or 0) - total_allocated
+				debug_msg += f"  - {entry.journal_entry}: debit={entry.debit}, allocated={total_allocated}, unallocated={unallocated}\n"
+
+		frappe.log_error(debug_msg, "Import Journal Entries Debug")
+
 		# Return result without showing message (let JS handle it)
 		return {
 			"journal_entry_records": journal_entry_records,
@@ -199,12 +330,35 @@ def allocate_payments(calculation_run_items, journal_entries):
 	Updates outstanding amounts after allocation
 	"""
 	try:
+		# Parse parameters if they're JSON strings
+		import json
+		if isinstance(calculation_run_items, str):
+			calculation_run_items = json.loads(calculation_run_items)
+		if isinstance(journal_entries, str):
+			journal_entries = json.loads(journal_entries)
+
 		if not frappe.db.exists("DocType", "Zakaah Allocation History"):
 			return {"success": False, "message": "Zakaah Allocation History doctype not found"}
-		
+
 		allocated_records = []
 		allocation_summary = []
-		
+
+		# Get already allocated amounts from database
+		already_allocated = frappe.db.sql("""
+			SELECT
+				journal_entry,
+				SUM(allocated_amount) as total_allocated
+			FROM `tabZakaah Allocation History`
+			WHERE docstatus != 2
+			GROUP BY journal_entry
+		""", as_dict=True)
+
+		# Create dictionary for quick lookup
+		allocated_dict = {
+			row.journal_entry: row.total_allocated
+			for row in already_allocated
+		}
+
 		# Process each journal entry
 		for journal_entry in journal_entries:
 			journal_entry_name = journal_entry.get("journal_entry")
@@ -215,29 +369,71 @@ def allocate_payments(calculation_run_items, journal_entries):
 			remaining_to_allocate = unallocated_amount
 			
 			for run_item in calculation_run_items:
-				if (run_item.get("outstanding_zakaah") or 0) <= 0:
+				run_name = run_item.get("zakaah_calculation_run")
+				if not run_name:
 					continue
-				
+
+				# CRITICAL: Get CURRENT outstanding from database (not from stale run_item)
+				# This prevents over-allocation if user clicks Allocate multiple times
+				current_data = frappe.db.get_value(
+					"Zakaah Calculation Run",
+					run_name,
+					["total_zakaah", "paid_zakaah", "outstanding_zakaah"],
+					as_dict=True
+				)
+
+				if not current_data:
+					continue
+
+				current_outstanding = current_data.outstanding_zakaah or 0
+				total_zakaah = current_data.total_zakaah or 0
+				current_paid = current_data.paid_zakaah or 0
+
+				# Skip if already fully paid
+				if current_outstanding <= 0:
+					continue
+
 				if remaining_to_allocate <= 0:
 					break
-				
-				outstanding = run_item.get("outstanding_zakaah") or 0
-				allocation_amount = min(remaining_to_allocate, outstanding)
-				
+
+				# Calculate allocation amount (minimum of remaining to allocate and current outstanding)
+				allocation_amount = min(remaining_to_allocate, current_outstanding)
+
+				# VALIDATION: Ensure allocation won't exceed total zakaah
+				new_paid = current_paid + allocation_amount
+				if new_paid > total_zakaah:
+					# Adjust allocation to not exceed total
+					allocation_amount = max(0, total_zakaah - current_paid)
+					frappe.log_error(
+						f"Prevented over-allocation for {run_name}\n"
+						f"Total Zakaah: {total_zakaah}\n"
+						f"Current Paid: {current_paid}\n"
+						f"Attempted: {allocation_amount + (new_paid - total_zakaah)}\n"
+						f"Adjusted to: {allocation_amount}",
+						"Allocation Over-limit Prevention"
+					)
+
 				if allocation_amount > 0:
 					# Calculate remaining unallocated after this allocation
-					current_allocated = sum([
-						r.get("allocated_amount", 0) 
-						for r in allocated_records 
+					# Include BOTH: allocations from this session AND previous allocations from database
+					current_session_allocated = sum([
+						r.get("allocated_amount", 0)
+						for r in allocated_records
 						if r.get("journal_entry") == journal_entry_name
 					])
-					new_unallocated = original_debit - current_allocated - allocation_amount
+
+					# Get total allocated from database (including previous sessions)
+					previous_allocated = allocated_dict.get(journal_entry_name, 0)
+
+					# Total allocated = previous + current session + this allocation
+					total_allocated = previous_allocated + current_session_allocated + allocation_amount
+					new_unallocated = original_debit - total_allocated
 					
 					# Create allocation history record
 					allocation_doc = frappe.get_doc({
 						"doctype": "Zakaah Allocation History",
 						"journal_entry": journal_entry_name,
-						"zakaah_calculation_run": run_item.get("zakaah_calculation_run"),
+						"zakaah_calculation_run": run_name,
 						"allocated_amount": allocation_amount,
 						"unallocated_amount": new_unallocated,
 						"allocation_date": now(),
@@ -245,10 +441,10 @@ def allocate_payments(calculation_run_items, journal_entries):
 					})
 					allocation_doc.insert()
 					allocation_doc.submit()
-					
+
 					allocated_records.append({
 						"journal_entry": journal_entry_name,
-						"zakaah_calculation_run": run_item.get("zakaah_calculation_run"),
+						"zakaah_calculation_run": run_name,
 						"allocated_amount": allocation_amount
 					})
 					
@@ -295,39 +491,77 @@ def allocate_payments(calculation_run_items, journal_entries):
 		
 	except Exception as e:
 		frappe.log_error(f"Error allocating payments: {str(e)}", "Allocate Payments")
-		frappe.rollback()
+		frappe.db.rollback()
 		return {"success": False, "message": str(e)}
 
 
 @frappe.whitelist()
 def get_allocation_history(calculation_run=None, journal_entry=None):
-	"""Get allocation history records with filters"""
+	"""Get allocation history records with CURRENT unallocated amounts (not historical snapshots)"""
 	try:
 		filters = {"docstatus": ["!=", 2]}
-		
+
 		if calculation_run:
 			filters["zakaah_calculation_run"] = calculation_run
-		
+
 		if journal_entry:
 			filters["journal_entry"] = journal_entry
-		
+
 		history = frappe.db.get_all(
 			"Zakaah Allocation History",
 			filters=filters,
 			fields=[
 				"name",
-				"journal_entry", 
-				"zakaah_calculation_run", 
-				"allocated_amount", 
-				"unallocated_amount", 
+				"journal_entry",
+				"zakaah_calculation_run",
+				"allocated_amount",
+				"unallocated_amount",  # Historical value - will be replaced with current
 				"allocation_date",
 				"allocated_by"
 			],
 			order_by="allocation_date desc, name desc"
 		)
-		
+
+		# FIXED: Recalculate CURRENT unallocated amount for each journal entry
+		# Get current unallocated amounts for all journal entries
+		# IMPORTANT: Only count debits from Zakaa Liability account (payment account)
+		je_unallocated = {}
+		if history:
+			unique_jes = list(set([h["journal_entry"] for h in history]))
+
+			# Get the Zakaa Liability payment account (the account used for zakaah payments)
+			# This is typically "2205001 - Zakaa Liability - AP" or similar
+			# We'll query GL Entry filtered by the payment account to get accurate amounts
+			current_unallocated = frappe.db.sql("""
+				SELECT
+					gle.voucher_no as journal_entry,
+					SUM(gle.debit) as total_debit,
+					COALESCE(alloc.total_allocated, 0) as total_allocated,
+					SUM(gle.debit) - COALESCE(alloc.total_allocated, 0) as current_unallocated
+				FROM `tabGL Entry` gle
+				LEFT JOIN (
+					SELECT journal_entry, SUM(allocated_amount) as total_allocated
+					FROM `tabZakaah Allocation History`
+					WHERE docstatus = 1
+					GROUP BY journal_entry
+				) alloc ON alloc.journal_entry = gle.voucher_no
+				WHERE gle.voucher_no IN %(je_list)s
+				AND gle.account LIKE '%%Zakaa Liability%%'
+				AND gle.is_cancelled = 0
+				GROUP BY gle.voucher_no
+			""", {"je_list": unique_jes}, as_dict=True)
+
+			# Build lookup dict
+			for row in current_unallocated:
+				je_unallocated[row.journal_entry] = row.current_unallocated
+
+		# Replace historical unallocated_amount with current value
+		for record in history:
+			je_name = record["journal_entry"]
+			record["unallocated_amount"] = je_unallocated.get(je_name, 0)
+
 		return history
-		
+
 	except Exception as e:
 		frappe.log_error(f"Error getting allocation history: {str(e)}", "Get Allocation History")
 		return []
@@ -351,39 +585,41 @@ def get_total_allocated_for_run(calculation_run_name):
 
 @frappe.whitelist()
 def get_payment_accounts_from_settings(company):
-	"""Get payment accounts from Zakaah Assets Configuration"""
+	"""Get payment accounts from ALL Zakaah Assets Configurations for the company"""
 	try:
 		# Get payment accounts from Zakaah Assets Configuration
 		if not frappe.db.exists("DocType", "Zakaah Assets Configuration"):
 			return []
-		
+
 		if not company:
 			return []
-		
-		# Find assets configuration for company
-		config_name = frappe.db.get_value(
+
+		# Find ALL assets configurations for this company (all fiscal years)
+		config_names = frappe.db.get_all(
 			"Zakaah Assets Configuration",
-			{"company": company},
-			"name"
+			filters={"company": company},
+			pluck="name"
 		)
-		
-		if not config_name:
+
+		if not config_names:
 			return []
-		
-		config_doc = frappe.get_doc("Zakaah Assets Configuration", config_name)
-		
-		if not config_doc or not hasattr(config_doc, 'payment_accounts') or not config_doc.payment_accounts:
-			return []
-		
-		accounts = []
-		for row in config_doc.payment_accounts:
-			if row.account:
-				accounts.append({
-					"account": row.account,
-					"account_name": row.account_name or frappe.db.get_value("Account", row.account, "account_name")
-				})
-		
-		return accounts
+
+		# Collect all unique payment accounts from all fiscal years
+		accounts_dict = {}  # Use dict to avoid duplicates
+
+		for config_name in config_names:
+			config_doc = frappe.get_doc("Zakaah Assets Configuration", config_name)
+
+			if config_doc and hasattr(config_doc, 'payment_accounts') and config_doc.payment_accounts:
+				for row in config_doc.payment_accounts:
+					if row.account and row.account not in accounts_dict:
+						accounts_dict[row.account] = {
+							"account": row.account,
+							"account_name": row.account_name or frappe.db.get_value("Account", row.account, "account_name")
+						}
+
+		# Return list of accounts
+		return list(accounts_dict.values())
 		
 	except Exception as e:
 		frappe.log_error(f"Error getting payment accounts: {str(e)}", "Get Payment Accounts")

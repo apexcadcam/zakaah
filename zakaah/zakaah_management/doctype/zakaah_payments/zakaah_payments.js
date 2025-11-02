@@ -1,19 +1,28 @@
 frappe.ui.form.on("Zakaah Payments", {
 	refresh(frm) {
-		// Make tables read-only BUT allow them to be visible when empty
-		frm.set_df_property("calculation_runs", "cannot_delete_rows", true);
-		frm.set_df_property("calculation_runs", "cannot_add_rows", true);
-		
-		// For payment_entries and allocation_history - TEMPORARILY allow add_rows to show table
-		frm.set_df_property("payment_entries", "cannot_delete_rows", true);
-		frm.set_df_property("payment_entries", "cannot_add_rows", false); // Allow to show table
-		
-		frm.set_df_property("allocation_history", "cannot_delete_rows", true);
-		frm.set_df_property("allocation_history", "cannot_add_rows", false); // Allow to show table
-		
+		// Hide Save button
+		frm.disable_save();
+
+		// Make tables read-only by preventing add/delete, but keep rows editable for checkboxes
+		// Use grid properties instead of df_property
+		if (frm.fields_dict.calculation_runs && frm.fields_dict.calculation_runs.grid) {
+			frm.fields_dict.calculation_runs.grid.cannot_add_rows = true;
+			frm.fields_dict.calculation_runs.grid.cannot_delete_rows = true;
+		}
+
+		if (frm.fields_dict.payment_entries && frm.fields_dict.payment_entries.grid) {
+			frm.fields_dict.payment_entries.grid.cannot_add_rows = true;
+			frm.fields_dict.payment_entries.grid.cannot_delete_rows = true;
+		}
+
+		if (frm.fields_dict.allocation_history && frm.fields_dict.allocation_history.grid) {
+			frm.fields_dict.allocation_history.grid.cannot_add_rows = true;
+			frm.fields_dict.allocation_history.grid.cannot_delete_rows = true;
+		}
+
 		// Ensure tables are visible
 		frm.trigger('ensure_tables_visible');
-		
+
 		// After a delay, hide the add buttons but keep table visible
 		setTimeout(() => {
 			// Hide add buttons manually using CSS/JS since we can't change cannot_add_rows without hiding table
@@ -24,49 +33,63 @@ frappe.ui.form.on("Zakaah Payments", {
 				$(frm.fields_dict.allocation_history.grid.wrapper).find('.grid-add-row, .grid-add-row-btn').hide();
 			}
 		}, 500);
-		
+
 		// Show checkboxes for calculation_runs and payment_entries (for reconciliation)
 		// But hide for allocation_history (read-only history)
 		frm.trigger('setup_checkboxes');
-		
-		// Add buttons
-		frm.add_custom_button(__("Get Unreconciled Entries"), function() {
-			frm.trigger("load_data");
-		}, __("Actions"));
-		
-		frm.add_custom_button(__("View Allocation History"), function() {
-			frm.trigger("load_allocation_history");
-		}, __("Actions"));
-		
-		// Show Allocate button only if there's data
+
+		// Left side buttons (added first)
+		// Show Allocate button first on the left if there's data
 		if (frm.doc.calculation_runs && frm.doc.calculation_runs.length > 0 &&
 			frm.doc.payment_entries && frm.doc.payment_entries.length > 0) {
 			frm.add_custom_button(__("Allocate Payments"), function() {
 				frm.trigger("allocate_payments");
+			}).addClass('btn-success');
+		}
+
+		// Add "Get Unreconciled Entries" button on the left
+		if (frm.doc.docstatus === 0) {
+			frm.add_custom_button(__("Get Unreconciled Entries"), function() {
+				frm.trigger("load_data");
+			}).addClass('btn-primary');
+		}
+
+		// Right side - Actions dropdown
+		// View Allocation History under Actions
+		frm.add_custom_button(__("View Allocation History"), function() {
+			frm.trigger("load_allocation_history");
+		}, __("Actions"));
+
+		// Add Clear button under Actions
+		if (frm.doc.docstatus === 0) {
+			frm.add_custom_button(__("Clear All Entries"), function() {
+				frappe.confirm(
+					__('Are you sure you want to clear all Calculation Runs and Journal Entries?'),
+					function() {
+						// Clear all tables
+						frm.clear_table('calculation_runs');
+						frm.clear_table('payment_entries');
+						frm.clear_table('allocation_history');
+						frm.refresh_fields();
+						frappe.show_alert({
+							message: __('All entries cleared'),
+							indicator: 'green'
+						}, 3);
+					}
+				);
 			}, __("Actions"));
 		}
 	},
 	
 	onload(frm) {
-		// Set default date range
-		if (!frm.doc.from_date) {
-			frm.set_value('from_date', frappe.datetime.add_months(frappe.datetime.get_today(), -12));
-		}
-		if (!frm.doc.to_date) {
-			frm.set_value('to_date', frappe.datetime.get_today());
-		}
-		
+		// Don't set default dates - let user select based on fiscal year they want to reconcile
+		// They should match the fiscal year dates of the Zakaah Calculation Runs they want to pay
+
 		// Force tables to be visible by adding placeholder rows
 		frm.trigger('ensure_tables_visible');
-		
-		// Auto-load data if form is not new and has company/date range
-		if (!frm.is_new() && frm.doc.company && frm.doc.from_date && frm.doc.to_date) {
-			// Load data automatically
-			setTimeout(() => {
-				frm.trigger('load_data');
-			}, 1000);
-		}
-		
+
+		// Don't auto-load - user must click "Get Unreconciled Entries" after selecting date range
+
 		// Load allocation history
 		frm.trigger("load_allocation_history");
 	},
@@ -187,9 +210,9 @@ frappe.ui.form.on("Zakaah Payments", {
 			frappe.msgprint(__('Please select a Company first'));
 			return;
 		}
-		
+
 		if (!frm.doc.from_date || !frm.doc.to_date) {
-			frappe.msgprint(__('Please select From Date and To Date'));
+			frappe.msgprint(__('Please select From Date and To Date.<br><br><strong>Tip:</strong> Set the date range to match the fiscal year you want to reconcile. For example, for FY 2022, use 2022-01-01 to 2022-12-31.'));
 			return;
 		}
 		
@@ -237,7 +260,8 @@ frappe.ui.form.on("Zakaah Payments", {
 							}
 							
 							frm.clear_table('payment_entries');
-							
+
+							let total_unreconciled = 0;
 							if (journal_entry_records && journal_entry_records.length > 0) {
 								journal_entry_records.forEach(function(record) {
 									let row = frm.add_child('payment_entries');
@@ -249,6 +273,9 @@ frappe.ui.form.on("Zakaah Payments", {
 									row.remarks = record.remarks || '';
 									row.allocated_amount = record.allocated_amount || 0;
 									row.unallocated_amount = record.unallocated_amount || record.debit || 0;
+
+									// Add to total unreconciled
+									total_unreconciled += (row.unallocated_amount || 0);
 								});
 							} else {
 								// If no records, add placeholder to keep table visible
@@ -256,8 +283,12 @@ frappe.ui.form.on("Zakaah Payments", {
 								placeholder.journal_entry = '';
 								placeholder._placeholder = true;
 							}
-							
+
 							frm.refresh_field('payment_entries');
+
+							// Set total journal entries unreconciled
+							frm.set_value('total_journal_entries', total_unreconciled);
+
 							frm.trigger('refresh');
 							
 							let message = __('Loaded {0} unreconciled entries', [journal_entry_records.length]);
@@ -304,11 +335,15 @@ frappe.ui.form.on("Zakaah Payments", {
 					});
 					
 					frm.refresh_field('calculation_runs');
+
+					// Set total calculation runs outstanding
+					frm.set_value('total_calculation_runs', total_outstanding);
+
 					frm.trigger('refresh');
-					
+
 					if (total_outstanding > 0) {
 						frappe.show_alert({
-							message: __('Found {0} unreconciled year(s) with outstanding: {1}', 
+							message: __('Found {0} unreconciled year(s) with outstanding: {1}',
 									[r.message.length, format_currency(total_outstanding)]),
 							indicator: 'blue'
 						}, 5);
@@ -324,29 +359,55 @@ frappe.ui.form.on("Zakaah Payments", {
 	},
 	
 	allocate_payments(frm) {
-		// Get selected rows from checkboxes, or all rows with outstanding balance if no selection
+		console.log('Allocate Payments clicked');
+
+		// Use Frappe's built-in grid selection methods
 		let selected_run_indices = [];
 		let selected_entry_indices = [];
-		
-		// Get selected calculation runs
+
+		// Get selected calculation runs using Frappe grid API
 		if (frm.fields_dict.calculation_runs && frm.fields_dict.calculation_runs.grid) {
-			frm.fields_dict.calculation_runs.grid.grid_rows.forEach((row, idx) => {
-				let checkbox = row.row_html && $(row.row_html).find('input[type="checkbox"]');
-				if (checkbox.length && checkbox.is(':checked')) {
+			let grid = frm.fields_dict.calculation_runs.grid;
+
+			// Try to get selected using Frappe's method
+			if (grid.get_selected) {
+				let selected = grid.get_selected();
+				console.log('Selected calculation runs (grid.get_selected):', selected);
+				selected_run_indices = selected.map(name => {
+					return frm.doc.calculation_runs.findIndex(row => row.name === name);
+				});
+			} else {
+				// Fallback: check all rows
+				frm.doc.calculation_runs.forEach((row, idx) => {
 					selected_run_indices.push(idx);
-				}
-			});
+				});
+				console.log('No get_selected method - using all calculation runs');
+			}
 		}
-		
-		// Get selected payment entries
+
+		console.log('Selected run indices:', selected_run_indices);
+
+		// Get selected payment entries using Frappe grid API
 		if (frm.fields_dict.payment_entries && frm.fields_dict.payment_entries.grid) {
-			frm.fields_dict.payment_entries.grid.grid_rows.forEach((row, idx) => {
-				let checkbox = row.row_html && $(row.row_html).find('input[type="checkbox"]');
-				if (checkbox.length && checkbox.is(':checked')) {
+			let grid = frm.fields_dict.payment_entries.grid;
+
+			// Try to get selected using Frappe's method
+			if (grid.get_selected) {
+				let selected = grid.get_selected();
+				console.log('Selected payment entries (grid.get_selected):', selected);
+				selected_entry_indices = selected.map(name => {
+					return frm.doc.payment_entries.findIndex(row => row.name === name);
+				});
+			} else {
+				// Fallback: check all rows
+				frm.doc.payment_entries.forEach((row, idx) => {
 					selected_entry_indices.push(idx);
-				}
-			});
+				});
+				console.log('No get_selected method - using all payment entries');
+			}
 		}
+
+		console.log('Selected entry indices:', selected_entry_indices);
 		
 		// If no rows selected, use all rows with outstanding balance (backward compatibility)
 		let selected_runs = [];
@@ -384,16 +445,23 @@ frappe.ui.form.on("Zakaah Payments", {
 			);
 		}
 		
+		console.log('Selected runs:', selected_runs.length);
+		console.log('Selected entries:', selected_entries.length);
+
 		if (selected_runs.length === 0) {
+			console.log('ERROR: No runs with outstanding balance');
 			frappe.msgprint(__('No Zakaah Calculation Runs with outstanding balance available'));
 			return;
 		}
-		
+
 		if (selected_entries.length === 0) {
+			console.log('ERROR: No unallocated entries');
 			frappe.msgprint(__('No unallocated Journal Entries available'));
 			return;
 		}
-		
+
+		console.log('Proceeding to confirmation dialog');
+
 		// Calculate totals for confirmation
 		let total_journal_amount = selected_entries.reduce((sum, entry) => 
 			sum + (entry.unallocated_amount || entry.debit || 0), 0);

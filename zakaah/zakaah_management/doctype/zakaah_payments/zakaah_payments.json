@@ -9,6 +9,9 @@
   "company",
   "from_date",
   "to_date",
+  "column_break_dates",
+  "total_calculation_runs",
+  "total_journal_entries",
   "section_status",
   "reconciliation_status",
   "total_unreconciled",
@@ -40,6 +43,24 @@
    "fieldtype": "Date",
    "label": "To Date",
    "reqd": 1
+  },
+  {
+   "fieldname": "column_break_dates",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "total_calculation_runs",
+   "fieldtype": "Currency",
+   "label": "Total Calculation Runs (Outstanding)",
+   "read_only": 1,
+   "precision": 2
+  },
+  {
+   "fieldname": "total_journal_entries",
+   "fieldtype": "Currency",
+   "label": "Total Journal Entries (Unreconciled)",
+   "read_only": 1,
+   "precision": 2
   },
   {
    "fieldname": "section_status",
@@ -77,8 +98,7 @@
    "fieldname": "calculation_runs",
    "fieldtype": "Table",
    "label": "Calculation Runs",
-   "options": "Zakaah Payment Calculation Run Item",
-   "read_only": 1
+   "options": "Zakaah Payment Calculation Run Item"
   },
   {
    "fieldname": "section_payment_entries",
@@ -90,8 +110,7 @@
    "fieldname": "payment_entries",
    "fieldtype": "Table",
    "label": "Journal Entries",
-   "options": "Zakaah Payment Entry Item",
-   "read_only": 1
+   "options": "Zakaah Payment Entry Item"
   },
   {
    "fieldname": "section_allocation_history",
@@ -103,8 +122,7 @@
    "fieldname": "allocation_history",
    "fieldtype": "Table",
    "label": "Allocation History",
-   "options": "Zakaah Payment Allocation History Item",
-   "read_only": 1
+   "options": "Zakaah Payment Allocation History Item"
   }
  ],
  "index_web_pages_for_search": 1,

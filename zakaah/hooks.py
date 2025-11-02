@@ -38,6 +38,18 @@ def get_data():
 				},
 				{
 					"type": "doctype",
+					"name": "Zakaah Payments",
+					"label": _("Payments"),
+					"description": _("Allocate Zakaah payments to calculation runs")
+				},
+				{
+					"type": "doctype",
+					"name": "Zakaah Allocation History",
+					"label": _("Allocation History"),
+					"description": _("View payment allocation history")
+				},
+				{
+					"type": "doctype",
 					"name": "Gold Price",
 					"label": _("Gold Prices"),
 					"description": _("Manage gold prices for Nisab calculation")
