@@ -13,6 +13,14 @@ frappe.ui.form.on("Zakaah Assets Configuration", {
 			frm.add_custom_button(__("Validate Configuration"), function() {
 				validate_configuration(frm);
 			});
+			
+			frm.add_custom_button(__("Recalculate Account Adjustments"), function() {
+				recalculate_all_zakaah_values(frm, true);
+				frappe.show_alert({
+					message: __("Account Adjustments recalculated. Please save the form."),
+					indicator: "green"
+				}, 5);
+			});
 		}
 
 	// Set helpful messages
@@ -20,6 +28,38 @@ frappe.ui.form.on("Zakaah Assets Configuration", {
 
 	// Make balance fields read-only
 	set_balance_fields_readonly(frm);
+	
+	// Ensure all rows have calculated_zakaah_value set
+	recalculate_all_zakaah_values(frm);
+	
+	// IMPORTANT: If form has accounts and fiscal year is already selected,
+	// ensure balances are fetched for the fiscal year (not today's date)
+	// This handles the case when user opens an existing form
+	if (!frm.is_new() && frm.doc.fiscal_year && has_accounts(frm)) {
+		// Check if any balances look like they're from the wrong date
+		// If so, auto-recalculate
+		setTimeout(() => {
+			let needs_recalc = false;
+			// Check if we have accounts but balances look stale
+			['cash_accounts', 'inventory_accounts', 'receivable_accounts', 'liabilities_accounts', 'reserve_accounts'].forEach(table => {
+				if (frm.doc[table] && frm.doc[table].length > 0) {
+					frm.doc[table].forEach(row => {
+						if (row.account && (!row.calculated_zakaah_value && row.calculated_zakaah_value !== 0)) {
+							needs_recalc = true;
+						}
+					});
+				}
+			});
+			
+			if (needs_recalc) {
+				frappe.show_alert({
+					message: __("Recalculating balances for fiscal year {0}...", [frm.doc.fiscal_year]),
+					indicator: "blue"
+				}, 3);
+				calculate_all_balances(frm);
+			}
+		}, 1000);
+	}
 	},
 
 	company(frm) {
@@ -28,6 +68,22 @@ frappe.ui.form.on("Zakaah Assets Configuration", {
 				message: __("Company changed. Please review and update account configurations."),
 				indicator: "orange"
 			}, 5);
+		}
+	},
+	
+	fiscal_year(frm) {
+		if (frm.doc.fiscal_year && !frm.is_new()) {
+			// When fiscal year changes, recalculate all balances for that fiscal year
+			frappe.show_alert({
+				message: __("Fiscal Year changed. Recalculating all balances and adjustments..."),
+				indicator: "blue"
+			}, 5);
+			
+			// Use the Calculate All Balances function which handles fiscal year
+			// This will update both Balance and Account Adjustment for all rows
+			setTimeout(() => {
+				calculate_all_balances(frm);
+			}, 500);
 		}
 	}
 });
@@ -48,6 +104,22 @@ frappe.ui.form.on("Zakaah Account Configuration", {
 			message: __("Select an account to see its current balance"),
 			indicator: "blue"
 		}, 3);
+	},
+	
+	margin_profit: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'cash_accounts' && (row.balance || row.balance === 0)) {
+			calculate_zakaah_value(row);
+		}
+	},
+	
+	balance: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'cash_accounts') {
+			calculate_zakaah_value(row);
+		}
 	}
 });
 
@@ -64,7 +136,7 @@ frappe.ui.form.on("Zakaah Account Configuration", {
 	margin_profit: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		
-		if (row.parentfield === 'inventory_accounts') {
+		if (row.parentfield === 'inventory_accounts' && (row.balance || row.balance === 0)) {
 			calculate_zakaah_value(row);
 		}
 	},
@@ -72,7 +144,7 @@ frappe.ui.form.on("Zakaah Account Configuration", {
 	balance: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 		
-		if (row.parentfield === 'inventory_accounts' && row.margin_profit) {
+		if (row.parentfield === 'inventory_accounts') {
 			calculate_zakaah_value(row);
 		}
 	}
@@ -86,6 +158,22 @@ frappe.ui.form.on("Zakaah Account Configuration", {
 		if (row.account && row.parentfield === 'receivable_accounts') {
 			calculate_account_balance(frm, row);
 		}
+	},
+	
+	margin_profit: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'receivable_accounts' && (row.balance || row.balance === 0)) {
+			calculate_zakaah_value(row);
+		}
+	},
+	
+	balance: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'receivable_accounts') {
+			calculate_zakaah_value(row);
+		}
 	}
 });
 
@@ -94,8 +182,24 @@ frappe.ui.form.on("Zakaah Account Configuration", {
 	account: function(frm, cdt, cdn) {
 		let row = locals[cdt][cdn];
 
-		if (row.account && row.parentfield === 'liability_accounts') {
+		if (row.account && row.parentfield === 'liabilities_accounts') {
 			calculate_account_balance(frm, row);
+		}
+	},
+	
+	margin_profit: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'liabilities_accounts' && (row.balance || row.balance === 0)) {
+			calculate_zakaah_value(row);
+		}
+	},
+	
+	balance: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'liabilities_accounts') {
+			calculate_zakaah_value(row);
 		}
 	}
 });
@@ -107,6 +211,22 @@ frappe.ui.form.on("Zakaah Account Configuration", {
 
 		if (row.account && row.parentfield === 'reserve_accounts') {
 			calculate_account_balance(frm, row);
+		}
+	},
+	
+	margin_profit: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'reserve_accounts' && (row.balance || row.balance === 0)) {
+			calculate_zakaah_value(row);
+		}
+	},
+	
+	balance: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'reserve_accounts') {
+			calculate_zakaah_value(row);
 		}
 	}
 });
@@ -139,6 +259,23 @@ frappe.ui.form.on("Zakaah Account Configuration", {
 				calculate_payment_account_debit(frm, row);
 			}
 		}
+	},
+	
+	margin_profit: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'payment_accounts' && (row.debit || row.debit === 0)) {
+			calculate_zakaah_value_for_payment(row);
+		}
+	},
+	
+	debit: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'payment_accounts') {
+			// For payment accounts, use debit instead of balance
+			calculate_zakaah_value_for_payment(row);
+		}
 	}
 });
 
@@ -147,35 +284,96 @@ frappe.ui.form.on("Zakaah Account Configuration", {
 function calculate_account_balance(frm, row) {
 	if (!row.account) return;
 
-	frappe.call({
-		method: 'erpnext.accounts.utils.get_balance_on',
-		args: {
-			account: row.account,
-			date: frappe.datetime.get_today()
-		},
-		callback: function(r) {
-			if (r.message) {
-				frappe.model.set_value(row.doctype, row.name, 'balance', r.message);
-				
-				// If this is an inventory account with margin profit, calculate zakaah value
-				if (row.parentfield === 'inventory_accounts' && row.margin_profit) {
-					calculate_zakaah_value(row);
+	// If fiscal year is selected, use fiscal year end date; otherwise use today
+	let balance_date = frappe.datetime.get_today();
+	
+	if (frm.doc.fiscal_year) {
+		// Get fiscal year end date
+		frappe.call({
+			method: 'frappe.client.get_value',
+			args: {
+				doctype: 'Fiscal Year',
+				filters: { name: frm.doc.fiscal_year },
+				fieldname: 'year_end_date'
+			},
+			callback: function(r) {
+				if (r.message && r.message.year_end_date) {
+					// Use fiscal year end date
+					calculate_account_balance_for_date(frm, row, r.message.year_end_date);
+				} else {
+					// Fallback to today
+					calculate_account_balance_for_date(frm, row, balance_date);
 				}
-				
-				frappe.show_alert({
-					message: __("Balance updated: {0}", [format_currency(r.message)]),
-					indicator: "green"
-				}, 3);
 			}
-		}
-	});
+		});
+	} else {
+		// No fiscal year selected, use today
+		calculate_account_balance_for_date(frm, row, balance_date);
+	}
 }
 
 function calculate_zakaah_value(row) {
-	if (!row.balance || !row.margin_profit) return;
+	if (!row.balance && row.balance !== 0) return;
 	
-	// Calculate: Balance + (Balance × Margin Profit % / 100) = Balance × (1 + Margin % / 100)
-	let zakaah_value = row.balance * (1 + (row.margin_profit / 100));
+	// If no margin_profit or empty string, set Account Adjustment = Balance
+	if (!row.margin_profit || row.margin_profit.toString().trim() === '') {
+		frappe.model.set_value(row.doctype, row.name, 'calculated_zakaah_value', row.balance);
+		return;
+	}
+	
+	let margin = row.margin_profit.toString().trim();
+	let zakaah_value = row.balance;
+	
+	// Check if it's a percentage (contains % sign)
+	if (margin.includes('%')) {
+		// Remove % sign and parse
+		let percent = parseFloat(margin.replace('%', ''));
+		// Apply percentage: Balance × (1 + percent/100)
+		// Supports both positive and negative percentages
+		zakaah_value = row.balance * (1 + (percent / 100));
+	} else {
+		// It's a fixed amount (can be positive or negative)
+		let amount = parseFloat(margin);
+		if (!isNaN(amount)) {
+			// Simply add (positive or negative)
+			// Even if amount is 0, this will work correctly
+			zakaah_value = row.balance + amount;
+		}
+	}
+	
+	frappe.model.set_value(row.doctype, row.name, 'calculated_zakaah_value', zakaah_value);
+}
+
+function calculate_zakaah_value_for_payment(row) {
+	// For payment accounts, use debit instead of balance
+	if (!row.debit && row.debit !== 0) return;
+	
+	// If no margin_profit or empty string, set Account Adjustment = Debit
+	if (!row.margin_profit || row.margin_profit.toString().trim() === '') {
+		frappe.model.set_value(row.doctype, row.name, 'calculated_zakaah_value', row.debit);
+		return;
+	}
+	
+	let margin = row.margin_profit.toString().trim();
+	let zakaah_value = row.debit;
+	
+	// Check if it's a percentage (contains % sign)
+	if (margin.includes('%')) {
+		// Remove % sign and parse
+		let percent = parseFloat(margin.replace('%', ''));
+		// Apply percentage: Debit × (1 + percent/100)
+		// Supports both positive and negative percentages
+		zakaah_value = row.debit * (1 + (percent / 100));
+	} else {
+		// It's a fixed amount (can be positive or negative)
+		let amount = parseFloat(margin);
+		if (!isNaN(amount)) {
+			// Simply add (positive or negative)
+			// Even if amount is 0, this will work correctly
+			zakaah_value = row.debit + amount;
+		}
+	}
+	
 	frappe.model.set_value(row.doctype, row.name, 'calculated_zakaah_value', zakaah_value);
 }
 
@@ -186,22 +384,57 @@ function calculate_account_balance_for_date(frm, row, date) {
 		method: 'erpnext.accounts.utils.get_balance_on',
 		args: {
 			account: row.account,
-			date: date
+			date: date,
+			company: frm.doc.company
 		},
 		callback: function(r) {
-			if (r.message) {
+			if (r.message !== undefined) {
 				frappe.model.set_value(row.doctype, row.name, 'balance', r.message);
 				
-				// If this is an inventory account with margin profit, calculate zakaah value
-				if (row.parentfield === 'inventory_accounts' && row.margin_profit) {
-					calculate_zakaah_value(row);
-				}
+				// IMPORTANT: Wait for the balance to be set, then recalculate zakaah value
+				setTimeout(() => {
+					// Update the row object with the latest data
+					let updated_row = locals[row.doctype][row.name];
+					
+					// Calculate zakaah value for all account types (even if margin_profit is 0 or empty)
+					if (['cash_accounts', 'inventory_accounts', 'receivable_accounts', 'liabilities_accounts', 'reserve_accounts'].includes(updated_row.parentfield)) {
+						calculate_zakaah_value(updated_row);
+					}
+				}, 100);
 			}
 		}
 	});
 }
 
 function calculate_payment_account_debit(frm, row) {
+	if (!row.account) return;
+
+	// If fiscal year is selected, use fiscal year date range
+	if (frm.doc.fiscal_year) {
+		frappe.call({
+			method: 'frappe.client.get_value',
+			args: {
+				doctype: 'Fiscal Year',
+				filters: { name: frm.doc.fiscal_year },
+				fieldname: ['year_start_date', 'year_end_date']
+			},
+			callback: function(r) {
+				if (r.message && r.message.year_end_date) {
+					// Use fiscal year range
+					calculate_payment_account_debit_for_fy_range(frm, row, r.message.year_start_date, r.message.year_end_date);
+				} else {
+					// Fallback to all-time debit
+					calculate_payment_account_debit_all_time(frm, row);
+				}
+			}
+		});
+	} else {
+		// No fiscal year selected, calculate all-time debit
+		calculate_payment_account_debit_all_time(frm, row);
+	}
+}
+
+function calculate_payment_account_debit_all_time(frm, row) {
 	if (!row.account) return;
 
 	// For payment accounts, we need GL Entry debit, not balance
@@ -219,6 +452,13 @@ function calculate_payment_account_debit(frm, row) {
 			if (r.message && r.message.length > 0) {
 				let debit = r.message[0].total_debit || 0;
 				frappe.model.set_value(row.doctype, row.name, 'debit', debit);
+				
+				// IMPORTANT: Wait for the debit to be set, then recalculate zakaah value
+				setTimeout(() => {
+					let updated_row = locals[row.doctype][row.name];
+					calculate_zakaah_value_for_payment(updated_row);
+				}, 100);
+				
 				frappe.show_alert({
 					message: __("Debit amount updated: {0}", [format_currency(debit)]),
 					indicator: "green"
@@ -247,6 +487,12 @@ function calculate_payment_account_debit_for_date(frm, row, date) {
 			if (r.message && r.message.length > 0) {
 				let debit = r.message[0].total_debit || 0;
 				frappe.model.set_value(row.doctype, row.name, 'debit', debit);
+				
+				// IMPORTANT: Wait for the debit to be set, then recalculate zakaah value
+				setTimeout(() => {
+					let updated_row = locals[row.doctype][row.name];
+					calculate_zakaah_value_for_payment(updated_row);
+				}, 100);
 			}
 		}
 	});
@@ -273,6 +519,12 @@ function calculate_payment_account_debit_for_fy_range(frm, row, from_date, to_da
 			if (r.message && r.message.length > 0) {
 				let debit = r.message[0].total_debit || 0;
 				frappe.model.set_value(row.doctype, row.name, 'debit', debit);
+				
+				// IMPORTANT: Wait for the debit to be set, then recalculate zakaah value
+				setTimeout(() => {
+					let updated_row = locals[row.doctype][row.name];
+					calculate_zakaah_value_for_payment(updated_row);
+				}, 100);
 			}
 		}
 	});
@@ -323,7 +575,7 @@ function calculate_balances_for_date(frm, fiscal_year_start, fiscal_year_end) {
 
 	// Count total accounts
 	['cash_accounts', 'inventory_accounts', 'receivable_accounts',
-	 'liability_accounts', 'reserve_accounts', 'payment_accounts'].forEach(table => {
+	 'liabilities_accounts', 'reserve_accounts', 'payment_accounts'].forEach(table => {
 		if (frm.doc[table]) {
 			total += frm.doc[table].length;
 		}
@@ -360,8 +612,8 @@ function calculate_balances_for_date(frm, fiscal_year_start, fiscal_year_end) {
 	}
 
 	// Calculate liability accounts
-	if (frm.doc.liability_accounts) {
-		frm.doc.liability_accounts.forEach(row => {
+	if (frm.doc.liabilities_accounts) {
+		frm.doc.liabilities_accounts.forEach(row => {
 			if (row.account) {
 				calculate_account_balance_for_date(frm, row, fiscal_year_end);
 				calculated++;
@@ -395,8 +647,14 @@ function calculate_balances_for_date(frm, fiscal_year_start, fiscal_year_end) {
 			indicator: "green"
 		}, 5);
 
+		// Refresh all child tables to show updated values
 		frm.refresh_fields();
-	}, 1000);
+		
+		// Extra refresh after a short delay to ensure all async calculations complete
+		setTimeout(() => {
+			frm.refresh_fields();
+		}, 500);
+	}, 1500);
 }
 
 function validate_configuration(frm) {
@@ -411,7 +669,7 @@ function validate_configuration(frm) {
 	// Check if at least one account is configured
 	let has_accounts = false;
 	['cash_accounts', 'inventory_accounts', 'receivable_accounts',
-	 'liability_accounts', 'reserve_accounts', 'payment_accounts'].forEach(table => {
+	 'liabilities_accounts', 'reserve_accounts', 'payment_accounts'].forEach(table => {
 		if (frm.doc[table] && frm.doc[table].length > 0) {
 			has_accounts = true;
 		}
@@ -424,7 +682,7 @@ function validate_configuration(frm) {
 	// Check for duplicate accounts across tables
 	let all_accounts = [];
 	['cash_accounts', 'inventory_accounts', 'receivable_accounts',
-	 'liability_accounts', 'reserve_accounts', 'payment_accounts'].forEach(table => {
+	 'liabilities_accounts', 'reserve_accounts', 'payment_accounts'].forEach(table => {
 		if (frm.doc[table]) {
 			frm.doc[table].forEach(row => {
 				if (row.account) {
@@ -526,4 +784,51 @@ function hide_irrelevant_columns(frm) {
 			frm.fields_dict.payment_accounts.grid.refresh();
 		}
 	}, 100);
+}
+
+function has_accounts(frm) {
+	// Check if form has any accounts configured
+	const account_tables = ['cash_accounts', 'inventory_accounts', 'receivable_accounts', 
+	                        'liabilities_accounts', 'reserve_accounts', 'payment_accounts'];
+	
+	for (let table of account_tables) {
+		if (frm.doc[table] && frm.doc[table].length > 0) {
+			return true;
+		}
+	}
+	return false;
+}
+
+function recalculate_all_zakaah_values(frm, force) {
+	// Recalculate zakaah values for all rows to ensure calculated_zakaah_value is set
+	// force: if true, recalculate even if calculated_zakaah_value exists
+	
+	const account_tables = ['cash_accounts', 'inventory_accounts', 'receivable_accounts', 'liabilities_accounts', 'reserve_accounts'];
+	
+	account_tables.forEach(table => {
+		if (frm.doc[table]) {
+			frm.doc[table].forEach(row => {
+				// Recalculate if:
+				// 1. Force mode is on, OR
+				// 2. Balance exists but calculated_zakaah_value is null/undefined/empty
+				if (force || ((row.balance || row.balance === 0) && (row.calculated_zakaah_value === null || row.calculated_zakaah_value === undefined || row.calculated_zakaah_value === ''))) {
+					calculate_zakaah_value(row);
+				}
+			});
+		}
+	});
+	
+	// Handle payment accounts separately (uses debit instead of balance)
+	if (frm.doc.payment_accounts) {
+		frm.doc.payment_accounts.forEach(row => {
+			if (force || ((row.debit || row.debit === 0) && (row.calculated_zakaah_value === null || row.calculated_zakaah_value === undefined || row.calculated_zakaah_value === ''))) {
+				calculate_zakaah_value_for_payment(row);
+			}
+		});
+	}
+	
+	// Refresh the form to show updated values
+	if (force) {
+		frm.refresh_fields();
+	}
 }

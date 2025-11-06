@@ -6,7 +6,17 @@ from frappe.utils import getdate
 
 class ZakaahAssetsConfiguration(Document):
     def validate(self):
-        """Calculate balances"""
+        """
+        Calculate balances and account adjustments for the selected fiscal year.
+        This ensures that when the form is saved, all values are correct for the fiscal year.
+        
+        For each account row:
+        1. Fetches the balance as of the fiscal year end date
+        2. Calculates the Account Adjustment (calculated_zakaah_value) based on margin_profit:
+           - If margin_profit is empty/None: Account Adjustment = Balance
+           - If margin_profit contains '%': Account Adjustment = Balance × (1 + percent/100)
+           - Otherwise: Account Adjustment = Balance + amount
+        """
         if self.company and self.fiscal_year:
             # Get fiscal year dates
             fiscal_year_doc = frappe.get_doc("Fiscal Year", self.fiscal_year)
@@ -19,6 +29,7 @@ class ZakaahAssetsConfiguration(Document):
     
     def _calculate_balances(self, balance_date, fiscal_year_start, fiscal_year_end):
         """Calculate account balances as of given date"""
+        from frappe.utils import flt
         
         # Calculate balances for all account tables
         account_tables = [
@@ -43,11 +54,53 @@ class ZakaahAssetsConfiguration(Document):
                                 fiscal_year_end
                             )
                             row.debit = debit
+                            # Calculate zakaah value based on debit
+                            row.calculated_zakaah_value = self._calculate_zakaah_value(debit, row.margin_profit)
                             # Don't set balance at all for payment accounts
                         else:
                             # For other accounts, calculate Balance using Trial Balance logic
                             balance = self._get_account_balance(row.account, balance_date)
                             row.balance = balance
+                            # Calculate zakaah value based on balance
+                            row.calculated_zakaah_value = self._calculate_zakaah_value(balance, row.margin_profit)
+    
+    def _calculate_zakaah_value(self, base_amount, margin_profit):
+        """
+        Calculate zakaah value (Account Adjustment) based on margin profit.
+        If margin_profit is empty/None, return base_amount.
+        If margin_profit contains %, apply percentage.
+        Otherwise, add/subtract the fixed amount.
+        """
+        from frappe.utils import flt
+        
+        # If no margin_profit or empty string, return base_amount
+        if not margin_profit or str(margin_profit).strip() == '':
+            return flt(base_amount)
+        
+        margin = str(margin_profit).strip()
+        zakaah_value = flt(base_amount)
+        
+        # Check if it's a percentage (contains % sign)
+        if '%' in margin:
+            # Remove % sign and parse
+            try:
+                percent = flt(margin.replace('%', ''))
+                # Apply percentage: base_amount × (1 + percent/100)
+                zakaah_value = base_amount * (1 + (percent / 100))
+            except:
+                # If parsing fails, return base_amount
+                zakaah_value = base_amount
+        else:
+            # It's a fixed amount (can be positive or negative)
+            try:
+                amount = flt(margin)
+                # Simply add (positive or negative)
+                zakaah_value = base_amount + amount
+            except:
+                # If parsing fails, return base_amount
+                zakaah_value = base_amount
+        
+        return flt(zakaah_value)
     
     def _get_account_balance(self, account, date):
         """Get account balance as of date - using Trial Balance logic"""

@@ -131,7 +131,7 @@
   {
    "fieldname": "inventory_balance",
    "fieldtype": "Currency",
-   "label": "Inventory Zakaah Value (Balance + Margin %)",
+   "label": "Inventory Zakaah Value (Balance +/- Adjustment)",
    "read_only": 1
   },
   {

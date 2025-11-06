@@ -165,6 +165,26 @@ class ZakaahCalculationRun(Document):
             
             frappe.msgprint(_("Zakaah calculation completed successfully!"))
             
+            # Show dedication message for 10 seconds
+            dedication_msg = """
+            <div style='text-align: center; padding: 20px; font-family: Arial, sans-serif;'>
+                <h3 style='color: #2e7d32; margin-bottom: 15px;'>إهداء</h3>
+                <p style='font-size: 16px; line-height: 1.8; color: #424242;'>
+                    إلى والديّ العزيزين،<br><br>
+                    رحمك الله يا أبى وجعل مثواك الجنة،<br><br>
+                    اللهم اغفر لأبى وأمى وارحمهما رحمةً واسعة،<br><br>
+                    واجعل هذا العمل صدقةً جارية لهما. 🌿
+                </p>
+            </div>
+            <script>
+                setTimeout(function() {
+                    // Close the message dialog after 10 seconds
+                    $('.msgprint').fadeOut(500, function() { $(this).remove(); });
+                }, 10000);
+            </script>
+            """
+            frappe.msgprint(_(dedication_msg), title=_(""), indicator='green', as_list=False)
+            
         except Exception as e:
             frappe.msgprint(f"Calculation error: {str(e)}", indicator='red')
             raise
@@ -181,15 +201,21 @@ class ZakaahCalculationRun(Document):
         
         # frappe.log_error(f"Dates: {self.to_date}, Company: {company}", "Zakaah Calc")  # Debug logging removed
 
-        # Cash accounts
+        # Cash accounts - Use Account Adjustment from configuration
         for idx, row in enumerate(config.get('cash_accounts', [])):
             # Now row should be a dict, access with .get()
             account_name = row.get('account') if isinstance(row, dict) else None
             # frappe.log_error(f"Cash row {idx}: account={account_name}", "Zakaah Config")  # Debug logging removed
             if account_name:
                 balance = get_account_balance(account_name, self.to_date, company)
-                # frappe.log_error(f"Cash: {account_name} = {balance:.0f}", "Zakaah Calc")  # Debug logging removed
-                assets['cash'] += balance
+                
+                # For Cash: Use Account Adjustment (calculated_zakaah_value)
+                # If calculated_zakaah_value is None or empty string, use balance
+                calc_value = row.get('calculated_zakaah_value')
+                zakaah_value = flt(calc_value if calc_value not in [None, ''] else balance)
+                
+                # frappe.log_error(f"Cash: {account_name} = {balance:.0f}, zakaah_value={zakaah_value:.0f}", "Zakaah Calc")  # Debug logging removed
+                assets['cash'] += zakaah_value
                 
                 # Add to items table
                 if balance > 0:
@@ -199,25 +225,23 @@ class ZakaahCalculationRun(Document):
                         "balance": balance,
                         "currency": "EGP",
                         "exchange_rate": 1,
-                        "sub_total": balance
+                        "sub_total": zakaah_value  # Use Account Adjustment
                     })
             # else:
                 # frappe.log_error(f"Err: No account in row {idx}", "Zakaah Calc")  # Debug logging removed
 
-        # Inventory accounts
+        # Inventory accounts - Use Account Adjustment from configuration
         for idx, row in enumerate(config.get('inventory_accounts', [])):
             account_name = row.get('account') if isinstance(row, dict) else None
             if account_name:
                 balance = get_account_balance(account_name, self.to_date, company)
                 
-                # Get margin profit % from configuration
-                margin_profit = row.get('margin_profit', 0) if isinstance(row, dict) else 0
+                # Read Account Adjustment (calculated_zakaah_value) from configuration
+                # If calculated_zakaah_value is None or empty string, use balance
+                calc_value = row.get('calculated_zakaah_value')
+                zakaah_value = flt(calc_value if calc_value not in [None, ''] else balance)
                 
-                # Calculate zakaah value: Balance + (Balance × Margin %)
-                # This equals: Balance × (1 + Margin % / 100)
-                zakaah_value = balance * (1 + (flt(margin_profit) / 100))
-                
-                # frappe.log_error(f"Inv: {account_name} = {balance:.0f}, margin={margin_profit}%, zakaah_value={zakaah_value:.0f}", "Zakaah Calc")  # Debug logging removed
+                # frappe.log_error(f"Inv: {account_name} = {balance:.0f}, zakaah_value={zakaah_value:.0f}", "Zakaah Calc")  # Debug logging removed
                 assets['inventory'] += zakaah_value
                 
                 if balance > 0:
@@ -227,16 +251,22 @@ class ZakaahCalculationRun(Document):
                         "balance": balance,
                         "currency": "EGP",
                         "exchange_rate": 1,
-                        "sub_total": zakaah_value  # Use calculated zakaah value
+                        "sub_total": zakaah_value  # Use Account Adjustment value
                     })
         
-        # Receivables
+        # Receivables - Use Account Adjustment from configuration
         for idx, row in enumerate(config.get('receivable_accounts', [])):
             account_name = row.get('account') if isinstance(row, dict) else None
             if account_name:
                 balance = get_account_balance(account_name, self.to_date, company)
-                # frappe.log_error(f"Recv: {account_name} = {balance:.0f}", "Zakaah Calc")  # Debug logging removed
-                assets['receivables'] += balance
+                
+                # For Receivables: Use Account Adjustment (calculated_zakaah_value)
+                # If calculated_zakaah_value is None or empty string, use balance
+                calc_value = row.get('calculated_zakaah_value')
+                zakaah_value = flt(calc_value if calc_value not in [None, ''] else balance)
+                
+                # frappe.log_error(f"Recv: {account_name} = {balance:.0f}, zakaah_value={zakaah_value:.0f}", "Zakaah Calc")  # Debug logging removed
+                assets['receivables'] += zakaah_value
                 
                 if balance > 0:
                     self.append("items", {
@@ -245,17 +275,23 @@ class ZakaahCalculationRun(Document):
                         "balance": balance,
                         "currency": "EGP",
                         "exchange_rate": 1,
-                        "sub_total": balance
+                        "sub_total": zakaah_value  # Use Account Adjustment
                     })
         
-        # Payables (subtract from assets)
+        # Liabilities (subtract from assets) - Use Account Adjustment from configuration
         for idx, row in enumerate(config.get('liabilities_accounts', [])):
             account_name = row.get('account') if isinstance(row, dict) else None
             if account_name:
                 balance = get_account_balance(account_name, self.to_date, company)
-                # frappe.log_error(f"Pay: {account_name} = {balance:.0f}", "Zakaah Calc")  # Debug logging removed
+                
+                # For Liabilities: Use Account Adjustment (calculated_zakaah_value)
+                # If calculated_zakaah_value is None or empty string, use balance
+                calc_value = row.get('calculated_zakaah_value')
+                zakaah_value = flt(calc_value if calc_value not in [None, ''] else balance)
+                
+                # frappe.log_error(f"Liab: {account_name} = {balance:.0f}, zakaah_value={zakaah_value:.0f}", "Zakaah Calc")  # Debug logging removed
                 # Liabilities, add to deduct from assets
-                assets['liabilities'] += balance
+                assets['liabilities'] += zakaah_value
                 
                 if balance > 0:
                     self.append("items", {
@@ -264,16 +300,22 @@ class ZakaahCalculationRun(Document):
                         "balance": balance,
                         "currency": "EGP",
                         "exchange_rate": 1,
-                        "sub_total": balance
+                        "sub_total": zakaah_value  # Use Account Adjustment
                     })
         
-        # Reserves
+        # Reserves - Use Account Adjustment from configuration
         for idx, row in enumerate(config.get('reserve_accounts', [])):
             account_name = row.get('account') if isinstance(row, dict) else None
             if account_name:
                 balance = get_account_balance(account_name, self.to_date, company)
-                # frappe.log_error(f"Resv: {account_name} = {balance:.0f}", "Zakaah Calc")  # Debug logging removed
-                assets['reserves'] += balance
+                
+                # For Reserves: Use Account Adjustment (calculated_zakaah_value)
+                # If calculated_zakaah_value is None or empty string, use balance
+                calc_value = row.get('calculated_zakaah_value')
+                zakaah_value = flt(calc_value if calc_value not in [None, ''] else balance)
+                
+                # frappe.log_error(f"Resv: {account_name} = {balance:.0f}, zakaah_value={zakaah_value:.0f}", "Zakaah Calc")  # Debug logging removed
+                assets['reserves'] += zakaah_value
                 
                 if balance > 0:
                     self.append("items", {
@@ -282,7 +324,7 @@ class ZakaahCalculationRun(Document):
                         "balance": balance,
                         "currency": "EGP",
                         "exchange_rate": 1,
-                        "sub_total": balance
+                        "sub_total": zakaah_value  # Use Account Adjustment
                     })
         
         # Calculate total
