@@ -209,8 +209,16 @@ class ZakaahCalculationRun(Document):
             account_name = row.get('account') if isinstance(row, dict) else None
             if account_name:
                 balance = get_account_balance(account_name, self.to_date, company)
-                # frappe.log_error(f"Inv: {account_name} = {balance:.0f}", "Zakaah Calc")  # Debug logging removed
-                assets['inventory'] += balance
+                
+                # Get margin profit % from configuration
+                margin_profit = row.get('margin_profit', 0) if isinstance(row, dict) else 0
+                
+                # Calculate zakaah value: Balance + (Balance × Margin %)
+                # This equals: Balance × (1 + Margin % / 100)
+                zakaah_value = balance * (1 + (flt(margin_profit) / 100))
+                
+                # frappe.log_error(f"Inv: {account_name} = {balance:.0f}, margin={margin_profit}%, zakaah_value={zakaah_value:.0f}", "Zakaah Calc")  # Debug logging removed
+                assets['inventory'] += zakaah_value
                 
                 if balance > 0:
                     self.append("items", {
@@ -219,7 +227,7 @@ class ZakaahCalculationRun(Document):
                         "balance": balance,
                         "currency": "EGP",
                         "exchange_rate": 1,
-                        "sub_total": balance
+                        "sub_total": zakaah_value  # Use calculated zakaah value
                     })
         
         # Receivables

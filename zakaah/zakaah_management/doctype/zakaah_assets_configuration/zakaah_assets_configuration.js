@@ -15,12 +15,11 @@ frappe.ui.form.on("Zakaah Assets Configuration", {
 			});
 		}
 
-		// Set helpful messages
-		frm.set_intro(__("Configure which accounts to include in Zakaah calculation. Add accounts for each category."), "blue");
+	// Set helpful messages
+	frm.set_intro(__("Configure which accounts to include in Zakaah calculation. Add accounts for each category."), "blue");
 
-		// Make balance fields read-only and hide unwanted columns
-		set_balance_fields_readonly(frm);
-		hide_irrelevant_columns(frm);
+	// Make balance fields read-only
+	set_balance_fields_readonly(frm);
 	},
 
 	company(frm) {
@@ -59,6 +58,22 @@ frappe.ui.form.on("Zakaah Account Configuration", {
 
 		if (row.account && row.parentfield === 'inventory_accounts') {
 			calculate_account_balance(frm, row);
+		}
+	},
+	
+	margin_profit: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'inventory_accounts') {
+			calculate_zakaah_value(row);
+		}
+	},
+	
+	balance: function(frm, cdt, cdn) {
+		let row = locals[cdt][cdn];
+		
+		if (row.parentfield === 'inventory_accounts' && row.margin_profit) {
+			calculate_zakaah_value(row);
 		}
 	}
 });
@@ -141,6 +156,12 @@ function calculate_account_balance(frm, row) {
 		callback: function(r) {
 			if (r.message) {
 				frappe.model.set_value(row.doctype, row.name, 'balance', r.message);
+				
+				// If this is an inventory account with margin profit, calculate zakaah value
+				if (row.parentfield === 'inventory_accounts' && row.margin_profit) {
+					calculate_zakaah_value(row);
+				}
+				
 				frappe.show_alert({
 					message: __("Balance updated: {0}", [format_currency(r.message)]),
 					indicator: "green"
@@ -148,6 +169,14 @@ function calculate_account_balance(frm, row) {
 			}
 		}
 	});
+}
+
+function calculate_zakaah_value(row) {
+	if (!row.balance || !row.margin_profit) return;
+	
+	// Calculate: Balance + (Balance × Margin Profit % / 100) = Balance × (1 + Margin % / 100)
+	let zakaah_value = row.balance * (1 + (row.margin_profit / 100));
+	frappe.model.set_value(row.doctype, row.name, 'calculated_zakaah_value', zakaah_value);
 }
 
 function calculate_account_balance_for_date(frm, row, date) {
@@ -162,6 +191,11 @@ function calculate_account_balance_for_date(frm, row, date) {
 		callback: function(r) {
 			if (r.message) {
 				frappe.model.set_value(row.doctype, row.name, 'balance', r.message);
+				
+				// If this is an inventory account with margin profit, calculate zakaah value
+				if (row.parentfield === 'inventory_accounts' && row.margin_profit) {
+					calculate_zakaah_value(row);
+				}
 			}
 		}
 	});
@@ -432,12 +466,14 @@ function validate_configuration(frm) {
 
 function set_balance_fields_readonly(frm) {
 	// Make balance and debit fields read-only as they are auto-calculated
-	frm.fields_dict.cash_accounts.grid.update_docfield_property('balance', 'read_only', 1);
-	frm.fields_dict.inventory_accounts.grid.update_docfield_property('balance', 'read_only', 1);
-	frm.fields_dict.receivable_accounts.grid.update_docfield_property('balance', 'read_only', 1);
-	frm.fields_dict.liabilities_accounts.grid.update_docfield_property('balance', 'read_only', 1);
-	frm.fields_dict.reserve_accounts.grid.update_docfield_property('balance', 'read_only', 1);
-	frm.fields_dict.payment_accounts.grid.update_docfield_property('debit', 'read_only', 1);
+	const all_tables = ['cash_accounts', 'inventory_accounts', 'receivable_accounts', 'liabilities_accounts', 'reserve_accounts', 'payment_accounts'];
+	
+	all_tables.forEach(table => {
+		if (frm.fields_dict[table] && frm.fields_dict[table].grid) {
+			frm.fields_dict[table].grid.update_docfield_property('balance', 'read_only', 1);
+			frm.fields_dict[table].grid.update_docfield_property('debit', 'read_only', 1);
+		}
+	});
 }
 
 function hide_irrelevant_columns(frm) {

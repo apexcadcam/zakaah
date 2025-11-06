@@ -9,10 +9,8 @@
   "account_name",
   "balance",
   "debit",
-  "calculation_method",
-  "debt_type",
-  "include_deposits",
-  "deduct_from_assets",
+  "margin_profit",
+  "calculated_zakaah_value",
   "notes"
  ],
  "fields": [
@@ -38,7 +36,6 @@
    "label": "Balance",
    "read_only": 1,
    "precision": 2,
-   "depends_on": "eval:doc.parentfield != 'payment_accounts'",
    "in_list_view": 1
   },
   {
@@ -47,35 +44,23 @@
    "label": "Debit",
    "read_only": 1,
    "precision": 2,
-   "depends_on": "eval:doc.parentfield == 'payment_accounts'",
    "in_list_view": 1
   },
   {
-   "fieldname": "calculation_method",
-   "fieldtype": "Select",
-   "label": "Calculation Method",
-   "options": "\nAccount Balance\nStock Ledger",
-   "depends_on": "eval:doc.parentfield == 'inventory_accounts'"
+   "fieldname": "margin_profit",
+   "fieldtype": "Percent",
+   "label": "Margin Profit %",
+   "depends_on": "eval:doc.parentfield == 'inventory_accounts'",
+   "in_list_view": 1
   },
   {
-   "fieldname": "debt_type",
-   "fieldtype": "Select",
-   "label": "Debt Type",
-   "options": "\nAll\nGood\nDoubtful\nBad",
-   "depends_on": "eval:doc.parentfield == 'receivable_accounts'"
-  },
-  {
-   "fieldname": "include_deposits",
-   "fieldtype": "Check",
-   "label": "Include Bank Deposits",
-   "depends_on": "eval:doc.parentfield == 'cash_accounts'"
-  },
-  {
-   "fieldname": "deduct_from_assets",
-   "fieldtype": "Check",
-   "default": 1,
-   "label": "Deduct from Assets",
-   "depends_on": "eval:doc.parentfield == 'liabilities_accounts'"
+   "fieldname": "calculated_zakaah_value",
+   "fieldtype": "Currency",
+   "label": "Zakaah Value (Balance + Margin %)",
+   "read_only": 1,
+   "precision": 2,
+   "depends_on": "eval:doc.parentfield == 'inventory_accounts'",
+   "in_list_view": 1
   },
   {
    "fieldname": "notes",
