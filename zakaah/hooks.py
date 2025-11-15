@@ -18,11 +18,11 @@ app_email = "info@zakaah.com"
 def get_data():
 	return [
 		{
-			"module_name": "Zakaah Management",
+			"module_name": "zakaah_management",
 			"color": "orange",
 			"icon": "octicon octicon-flame",
 			"type": "module",
-			"label": _("Zakaah Management"),
+			"label": _("zakaah_management"),
 			"items": [
 				{
 					"type": "doctype",

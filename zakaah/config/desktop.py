@@ -5,7 +5,7 @@ from frappe import _
 def get_data():
 	return [
 		{
-			"module_name": "Zakaah Management",
+			"module_name": "zakaah_management",
 			"color": "orange",
 			"icon": "octicon octicon-flame",
 			"type": "module",
